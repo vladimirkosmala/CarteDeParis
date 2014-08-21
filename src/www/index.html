@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html>
+<head>
+	<meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+	<meta name="format-detection" content="telephone=no"/>
+	<meta name="viewport" content="user-scalable=no, initial-scale=1, maximum-scale=1, minimum-scale=1, width=device-width;" />
+	<link rel="stylesheet" href="dist/leaflet.css" />
+	
+	<link rel="stylesheet"  href="css/themes/default/jquery.mobile-1.1.1.css" />
+	
+	<title>Carte de Paris</title>
+<style>
+body {
+    padding: 0;
+    margin: 0;
+}
+html, body, #map {
+    height: 100%;
+}
+
+.ui-icon-myapp-gps {
+	background-image: url("img/arrow_18.png");
+	background-color: #fff;
+	background-position: -2px 1px;
+}
+@media only screen and (-webkit-min-device-pixel-ratio: 2) {
+	.ui-icon-myapp-gps {
+		background-image: url("img/arrow_36.png");
+		background-size: 18px 18px;
+	}
+}
+</style>
+</head>
+<body>
+	<div id="map" style="width:100%;height:100%;"></div>
+	
+	<div id="buttons" style="width:100px;height:40px;position:absolute;left:0;bottom:0;">
+		<a href="javascript:centerAll();" class="ui-btn ui-btn-inline ui-shadow ui-btn-corner-all ui-mini ui-btn-icon-notext ui-btn-up-c">
+			<span class="ui-btn-inner ui-btn-corner-all">
+				<span class="ui-icon ui-icon-myapp-gps ui-icon-shadow">&nbsp;</span>
+			</span>
+		</a>
+	</div>
+	
+	<script type="text/javascript" src="cordova-2.0.0.js"></script>
+	<script type="text/javascript" src="dist/leaflet-src.js"></script>
+	
+	<script src="js/jquery.js"></script>
+	<script src_="js/jquery.mobile-1.1.1.js"></script>
+	
+	<script type="text/javascript">
+		//app.initialize();
+		console = console || {log:function(){}};
+	</script>
+</body>
+</html>
+
+
+
+<script type="text/javascript">
+// ===============================
+// Config
+// ===============================
+
+var southWest = new L.LatLng(48.80369779130013, 2.253570556640625),
+    northEast = new L.LatLng(48.91212103330807, 2.418365478515625),
+	paris = new L.LatLng(48.856583,2.352276);
+	parisCenter = new L.LatLng(48.857938768171536, 2.335968017578125);
+var urlTiles = 'img/{z}/{x}_{y}.png';
+var maxBounds = new L.LatLngBounds(southWest, northEast);
+    
+// ===============================
+// Set up map
+// ===============================
+    
+var map = new L.Map('map', {
+	maxBounds: maxBounds,
+    attributionControl: false,
+	zoomControl: false
+});
+
+var mapLayer = new L.TileLayer(urlTiles, {
+    maxZoom: 17,
+	minZoom: 13
+});
+map.addLayer(mapLayer);
+map.setView(parisCenter, 13);
+
+// ===============================
+// Pin
+// ===============================
+
+var wIcon = 166/1.5;
+var MyPin = L.Icon.extend({
+    iconUrl: 'img/blue_pin.png',
+    shadowUrl: 'img/blue_shadow_lowaccur.png',
+    iconSize: new L.Point(wIcon, wIcon),
+    shadowSize: new L.Point(wIcon, wIcon),
+    iconAnchor: new L.Point(wIcon/2, wIcon/2),
+});
+
+var MyPinLow = MyPin.extend({});
+var MyPinHigh = MyPin.extend({shadowUrl: 'img/blue_shadow_highaccur.png'});
+
+var marker;
+
+function setUpPin()
+{
+	if (marker) return;
+	marker = new L.Marker(parisCenter, {icon:new MyPinHigh()});
+	map.addLayer(marker);
+}
+
+// ===============================
+// GPS
+// ===============================
+
+
+// view
+
+function changerPinAccuracy(accuracy)
+{
+	if (!accuracy) return;
+	
+	if (accuracy < 80) {
+		marker.setIcon(new MyPinHigh());
+	} else {
+		marker.setIcon(new MyPinLow());
+	}
+}
+
+function centerMapTo(latitude, longitude)
+{
+	if (!latitude || !longitude) return;
+	
+	console.log("Map set to:", latitude, longitude);
+	map.panTo(new L.LatLng(latitude, longitude));
+}
+
+function centerPinTo(latitude, longitude)
+{
+	if (!latitude || !longitude) return;
+	
+	console.log("Pin set to:", latitude, longitude);
+	marker.setLatLng(new L.LatLng(latitude, longitude));
+    showMarker();
+}
+
+var centerAllWhenFound = false;
+function centerAll()
+{
+	if (permissionGPS == false) {
+		askGPS();
+		return;
+	}
+    
+    clearWatch();
+    askGPS();
+	
+	if (!latitude || !longitude) {
+		navigator.notification.alert("Recherche de votre position...", null, "GPS");
+		centerAllWhenFound = true;
+		return;
+	}
+    
+    
+    if (!maxBounds.contains(new L.LatLng(latitude, longitude))) {
+        navigator.notification.alert("Vous êtes en dehors de Paris, votre position ne peut donc pas être affichée sur la carte.", null, "Attention");
+        return;
+    }
+    
+	centerMapTo(latitude, longitude);
+	centerPinTo(latitude, longitude);
+}
+    
+function hideMarker()
+{
+    marker.setOpacity(0);
+}
+
+function showMarker()
+{
+    marker.setOpacity(1);
+}
+
+// data
+
+var latitude=null, longitude=null, accuracy=null;
+
+function updateGPS(_latitude, _longitude, _accuracy)
+{
+    
+	latitude = _latitude;
+	longitude = _longitude;
+	accuracy = _accuracy;
+	console.log("GPS got :", latitude, longitude, accuracy);
+	if (!marker) setUpPin();
+	centerPinTo(latitude, longitude);
+	changerPinAccuracy(accuracy);
+	if (centerAllWhenFound) centerAll();
+}
+
+var watchID = null;
+var permissionGPS = null;
+function askGPS()
+{
+	console.log("updateGPS");
+	var onSuccess = function(position) {
+		updateGPS(position.coords.latitude, position.coords.longitude, position.coords.accuracy);
+		permissionGPS = true;
+	};
+
+	var onError = function (error) {
+		clearWatch();
+        hideMarker();
+		switch(error.code) {
+			case PositionError.PERMISSION_DENIED:
+				permissionGPS = false;
+				break;
+            
+			case PositionError.POSITION_UNAVAILABLE:
+			case PositionError.TIMEOUT:
+            default:
+				permissionGPS = false;
+				navigator.notification.alert("Impossible de trouver votre position actuelle.", null, "Oops");
+				break;
+		}
+	}
+
+	if (!watchID) {
+		var options = { enableHighAccuracy: true };
+		watchID = navigator.geolocation.watchPosition(onSuccess, onError, options);
+	}
+}
+
+function clearWatch() {
+	if (watchID != null) {
+		navigator.geolocation.clearWatch(watchID);
+		watchID = null;
+	}
+}
+
+var didReady = false;
+function deviceready()
+{
+	if (didReady) return;
+	didReady = true;
+	
+	console.log("Ready");
+	askGPS();
+}
+
+document.addEventListener('deviceready', deviceready, false);
+setTimeout(deviceready, 1500);
+</script>
